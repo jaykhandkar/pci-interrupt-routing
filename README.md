@@ -216,4 +216,17 @@ as just a logical extension of PCI bus 0. Look at the output of ```lspci``` on t
 
 ![t420-lspci](https://user-images.githubusercontent.com/23404671/178156363-38dc8197-d610-45b4-911d-5c9823a881c9.png)
 
-Devices 0 and 2 on PCI bus 0 are part of the processor package, and devices 0x16 through 0x1f are part of the PCH.
+Devices 0 and 2 on PCI bus 0 are part of the processor package, and devices 0x16 through 0x1f are part of the PCH. DMI is essentialy
+"extending" PCI bus 0, making these devices that are part of separate physical components appear on the same bus. This particular PCH
+has eight root ports, functions 0-8 of device 0x1c. Only four of them are visible here though, because this chipset provides a way to 
+hide root ports that are unused. Have a look at section 10.1.3 of the PCH datasheet:
+
+![c200-pch-rpcfg](https://user-images.githubusercontent.com/23404671/178262008-79c7f95b-1a57-4113-9339-f7df478f2378.png)
+
+Okay, now to the relevant part. If you go through sections 5.8 through 5.10 of the PCH datasheet, you will find that this chipset
+integrates both a legacy AT compatible 8259 PIC as well as a 24 pin IOxAPIC. The first 16 legacy interrupt sources such as the RTC,
+the PIT, the PS/2 controller etc. are mapped 1-1 to the first 16 pins of the IOAPIC, with the exception of the PIT, since the first
+pin of the IOAPIC is usually connected to the PIC as a cascade. For interrupts from PCIe devices, this PCH defines the ```PIRQ[A-H]#```
+signals which can be routed to certain pins of the 8259 PIC, or are connected directly to pins 17-24 of the IOAPIC. Since PCIe INTX
+interrupts are really just messages and not physical signals, the PCH can route these to the ```PIRQ[A-H]#``` signals as it pleases.
+In fact, look at sections 10.1.28 through 10.1.34 of the PCH datasheet:
