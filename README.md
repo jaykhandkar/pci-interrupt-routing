@@ -113,62 +113,63 @@ Applying the format defined by the ACPI spec to the first package, we get to kno
 is configurable and is allocated by a device called ```\_SB.LNKA``` in the ACPI namespace. I'll include the definition of
 this device below:
 ```
-        Device (LNKA)
-        {
-            Name (_HID, EisaId ("PNP0C0F") /* PCI Interrupt Link Device */)  // _HID: Hardware ID
-            Name (_UID, 0x01)  // _UID: Unique ID
-            Method (_STA, 0, NotSerialized)  // _STA: Status
-            {
-                If (!VPIR (\_SB.PCI0.LPC.PIRA))
-                {
-                    Return (0x09)
-                }
-                Else
-                {
-                    Return (0x0B)
-                }
-            }
+Device (LNKA)
+{
+    Name (_HID, EisaId ("PNP0C0F") /* PCI Interrupt Link Device */)  // _HID: Hardware ID
+    Name (_UID, 0x01)  // _UID: Unique ID
+    Method (_STA, 0, NotSerialized)  // _STA: Status
+    {
+	If (!VPIR (\_SB.PCI0.LPC.PIRA))
+	{
+	    Return (0x09)
+	}
+	Else
+	{
+	    Return (0x0B)
+	}
+    }
 
-            Name (_PRS, ResourceTemplate ()  // _PRS: Possible Resource Settings
-            {
-                IRQ (Level, ActiveLow, Shared, )
-                    {3,4,5,6,7,9,10,11}
-            })
-            Method (_DIS, 0, NotSerialized)  // _DIS: Disable Device
-            {
-                \_SB.PCI0.LPC.PIRA |= 0x80
-            }
+    Name (_PRS, ResourceTemplate ()  // _PRS: Possible Resource Settings
+    {
+	IRQ (Level, ActiveLow, Shared, )
+	    {3,4,5,6,7,9,10,11}
+    })
+    Method (_DIS, 0, NotSerialized)  // _DIS: Disable Device
+    {
+	\_SB.PCI0.LPC.PIRA |= 0x80
+    }
 
-            Name (BUFA, ResourceTemplate ()
-            {
-                IRQ (Level, ActiveLow, Shared, _Y00)
-                    {}
-            })
-            CreateWordField (BUFA, \_SB.LNKA._Y00._INT, IRA1)  // _INT: Interrupts
-            Method (_CRS, 0, NotSerialized)  // _CRS: Current Resource Settings
-            {
-                Local0 = (\_SB.PCI0.LPC.PIRA & 0x8F)
-                If (VPIR (Local0))
-                {
-                    IRA1 = (0x01 << Local0)
-                }
-                Else
-                {
-                    IRA1 = 0x00
-                }
+    Name (BUFA, ResourceTemplate ()
+    {
+	IRQ (Level, ActiveLow, Shared, _Y00)
+	    {}
+    })
+    CreateWordField (BUFA, \_SB.LNKA._Y00._INT, IRA1)  // _INT: Interrupts
+    Method (_CRS, 0, NotSerialized)  // _CRS: Current Resource Settings
+    {
+	Local0 = (\_SB.PCI0.LPC.PIRA & 0x8F)
+	If (VPIR (Local0))
+	{
+	    IRA1 = (0x01 << Local0)
+	}
+	Else
+	{
+	    IRA1 = 0x00
+	}
 
-                Return (BUFA) /* \_SB_.LNKA.BUFA */
-            }
+	Return (BUFA) /* \_SB_.LNKA.BUFA */
+    }
 
-            Method (_SRS, 1, NotSerialized)  // _SRS: Set Resource Settings
-            {
-                CreateWordField (Arg0, 0x01, IRA2)
-                FindSetRightBit (IRA2, Local0)
-                Local1 = (\_SB.PCI0.LPC.PIRA & 0x70)
-                Local1 |= Local0--
-                \_SB.PCI0.LPC.PIRA = Local1
-            }
-        }
+    Method (_SRS, 1, NotSerialized)  // _SRS: Set Resource Settings
+    {
+	CreateWordField (Arg0, 0x01, IRA2)
+	FindSetRightBit (IRA2, Local0)
+	Local1 = (\_SB.PCI0.LPC.PIRA & 0x70)
+	Local1 |= Local0--
+	\_SB.PCI0.LPC.PIRA = Local1
+    }
+}
+
 ```
 It looks quite a bit more complex, but here's how it works - you call the ```_PRS``` (Possible Resource Settings) method of
 this device to get the list of all possible IRQs of the 8259 that you can route it to. In this case, you can see that it's
@@ -227,9 +228,9 @@ Okay, now to the relevant part. If you go through sections 5.8 through 5.10 of t
 integrates both a legacy AT compatible 8259 PIC as well as a 24 pin IOxAPIC as part of its _interrupt interface_. The first 16 legacy 
 interrupt sources such as the RTC, the PIT, the PS/2 controller etc. are mapped 1-1 to the first 16 pins of the IOAPIC, with the exception 
 of the PIT, since the first pin of the IOAPIC is usually connected to the PIC as a cascade. For interrupts from PCIe devices, this PCH 
-defines the ```PIRQ[A-H]#```signals which can be routed to certain pins of the 8259 PIC, or are connected directly to pins 17-24 of the 
-IOAPIC. Since PCIe INTX interrupts are really just messages and not physical signals, the PCH can route these to the ```PIRQ[A-H]#``` 
-signals as it pleases. In fact, look at sections 10.1.28 through 10.1.34 of the PCH datasheet:
+defines the ```PIRQ[A-H]#``` (PCI/Peripheral IRQ?) signals which can be routed to certain pins of the 8259 PIC, or are connected directly 
+to pins 17-24 of the IOAPIC. Since PCIe INTX interrupts are really just messages and not physical signals, the PCH can route these to 
+the ```PIRQ[A-H]#``` signals as it pleases. In fact, look at sections 10.1.28 through 10.1.34 of the PCH datasheet:
 
 ![c200-dir](https://user-images.githubusercontent.com/23404671/179912066-e0f7d46f-8cfd-4b40-876c-b1dcf67a1fb9.png)
 
@@ -238,10 +239,12 @@ dump above that device 28 contains the root ports of the chipset. Let us try to 
 is at an offset of ```3146h``` from the base of the chipset configuration registers block, whose base address according to the datasheet
 is in the RCBA (Root Complex Base Address) register of the PCI-LPC bridge. I'll read this register using the ```setpci``` utility, which
 enables you to read from the configuration space of PCI devices:
+
 ```console
 root@t420:~# setpci -s 00:1f.0 F0.L
 fed1c001
 ```
+
 ```00:1f.0``` is the bus:device.function of the ISA bridge, as you can see in the lspci dump, and ```F0.L``` tells setpci to read a [L]ong
 from offset ```F0h``` in the configuration space of the device. Apparently, it has been set to ```fed1c001h``` by firmware on this system.
 Look at the format of this register, from section 13.1.39:
@@ -254,6 +257,26 @@ we are no longer dealing with PCI configuration space. We need a way to read fro
 the best way, since ```/dev/mem``` only exposes the low 1 MiB of address space:
 
 ```C
+#include <linux/module.h>
+#include <linux/moduleparam.h>
+#include <linux/init.h>
+
+#include <linux/kernel.h>       /* printk() */
+#include <linux/slab.h>         /* kmalloc() */
+#include <linux/fs.h>           /* everything... */
+#include <linux/errno.h>        /* error codes */
+#include <linux/cdev.h>		/* char device registration*/
+#include <linux/types.h> 
+#include <linux/fcntl.h>        /* O_ACCMODE */
+#include <linux/mm_types.h>     /* struct page and struct mm_struct*/
+#include <asm/page.h>           /*pgd_t, pte_t, __va etc.*/
+#include <linux/pgtable.h>      /*pgd_offset, pud_offset etc*/
+#include <asm/pgtable_types.h>  /*PTE_PFN_MASK*/
+#include <asm/types.h>
+#include <asm/smp.h>
+#include <linux/highmem.h>
+#include <asm/io.h>
+
 int test_init(void)
 {
 	
@@ -272,6 +295,7 @@ void test_exit(void)
 module_init(test_init);
 module_exit(test_exit);
 ```
+
 I've used ```ioremap``` instead of ```virt_to_phys``` since it is highly unlikely that the kernel has mapped so much physical memory
 on this system, given that it does not support huge pages. I've also omitted any error checking on the return value of ```ioremap```.
 Loading this module gave the folowing output in the kernel ring buffer:
@@ -279,42 +303,43 @@ Loading this module gave the folowing output in the kernel ring buffer:
 ```
 [41079.916787] register D28UR: 0x3210
 ```
-This register has retained its default value of ```3210h```. This means that pins INT[A-H] of device 28 are connected to PIRQ[A-D] (refer
+This register has retained its default value of ```3210h```. This means that pins ```INT[A-H]#``` of device 28 are connected to ```PIRQ[A-D]#``` (refer
 to the description of the D28IR register above.).  Let's look at the ```_PRT``` table for the PCIe root complex of this system to see if
 it matches:
 
 ```
                 Package (0x04)
-                {
-                    0x001CFFFF, 
-                    0x00, 
-                    0x00, 
-                    0x10
-                }, 
+{
+    0x001CFFFF, 
+    0x00, 
+    0x00, 
+    0x10
+}, 
 
-                Package (0x04)
-                {
-                    0x001CFFFF, 
-                    0x01, 
-                    0x00, 
-                    0x11
-                }, 
+Package (0x04)
+{
+    0x001CFFFF, 
+    0x01, 
+    0x00, 
+    0x11
+}, 
 
-                Package (0x04)
-                {
-                    0x001CFFFF, 
-                    0x02, 
-                    0x00, 
-                    0x12
-                }, 
+Package (0x04)
+{
+    0x001CFFFF, 
+    0x02, 
+    0x00, 
+    0x12
+}, 
 
-                Package (0x04)
-                {
-                    0x001CFFFF, 
-                    0x03, 
-                    0x00, 
-                    0x13
-                }, 
+Package (0x04)
+{
+    0x001CFFFF, 
+    0x03, 
+    0x00, 
+    0x13
+}, 
+
 ```
 It does! Pins INT[A-D] according to this table are connected to GSIs 0x10-0x13, which according to the chipset datasheet are
 directly mapped to PIRQ[A-D]. So, INT[A-D] -> PIRQ[A-D] for device 28, which I stated above by reading chipset registers, is
@@ -327,36 +352,36 @@ the ACPI tables provide a different routing:
 
 ````
                     Package (0x04)
-                    {
-                        0xFFFF, 
-                        0x00, 
-                        0x00, 
-                        0x11
-                    }, 
+    {
+	0xFFFF, 
+	0x00, 
+	0x00, 
+	0x11
+    }, 
 
-                    Package (0x04)
-                    {
-                        0xFFFF, 
-                        0x01, 
-                        0x00, 
-                        0x12
-                    }, 
+    Package (0x04)
+    {
+	0xFFFF, 
+	0x01, 
+	0x00, 
+	0x12
+    }, 
 
-                    Package (0x04)
-                    {
-                        0xFFFF, 
-                        0x02, 
-                        0x00, 
-                        0x13
-                    }, 
+    Package (0x04)
+    {
+	0xFFFF, 
+	0x02, 
+	0x00, 
+	0x13
+    }, 
 
-                    Package (0x04)
-                    {
-                        0xFFFF, 
-                        0x03, 
-                        0x00, 
-                        0x10
-                    }
+    Package (0x04)
+    {
+	0xFFFF, 
+	0x03, 
+	0x00, 
+	0x10
+    }
 ````
 This is the routing for ```00:1c.1```, which as you may recall from the chipset datasheet and PCI dump above, is root port 2.
 Can you see some similarities with the swizzle I talked about earlier? It seems the pins INT[A-D] of the device behind this root port
