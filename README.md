@@ -113,7 +113,7 @@ Applying the format defined by the ACPI spec to the first package, we get to kno
 is configurable and is allocated by a device called ```\_SB.LNKA``` in the ACPI namespace. I'll include the definition of
 this device below:
 ```
-    Device (LNKA)
+        Device (LNKA)
         {
             Name (_HID, EisaId ("PNP0C0F") /* PCI Interrupt Link Device */)  // _HID: Hardware ID
             Name (_UID, 0x01)  // _UID: Unique ID
@@ -253,7 +253,7 @@ from this address, a word that will give us the value of the D28IR register. How
 we are no longer dealing with PCI configuration space. We need a way to read from arbitrary physical memory, and writing a kernel module is
 the best way, since ```/dev/mem``` only exposes the low 1 MiB of address space:
 
-```
+```C
 int test_init(void)
 {
 	
@@ -263,10 +263,111 @@ int test_init(void)
   printk("register D28UR: 0x%lx\n", test);
   return 0;
 }
+
 void test_exit(void)
 {
   iounmap(0xfed1c000);
 }
+
 module_init(test_init);
 module_exit(test_exit);
 ```
+I've used ```ioremap``` instead of ```virt_to_phys``` since it is highly unlikely that the kernel has mapped so much physical memory
+on this system, given that it does not support huge pages. I've also omitted any error checking on the return value of ```ioremap```.
+Loading this module gave the folowing output in the kernel ring buffer:
+
+```
+[41079.916787] register D28UR: 0x3210
+```
+This register has retained its default value of ```3210h```. This means that pins INT[A-H] of device 28 are connected to PIRQ[A-D] (refer
+to the description of the D28IR register above.).  Let's look at the ```_PRT``` table for the PCIe root complex of this system to see if
+it matches:
+
+```
+                Package (0x04)
+                {
+                    0x001CFFFF, 
+                    0x00, 
+                    0x00, 
+                    0x10
+                }, 
+
+                Package (0x04)
+                {
+                    0x001CFFFF, 
+                    0x01, 
+                    0x00, 
+                    0x11
+                }, 
+
+                Package (0x04)
+                {
+                    0x001CFFFF, 
+                    0x02, 
+                    0x00, 
+                    0x12
+                }, 
+
+                Package (0x04)
+                {
+                    0x001CFFFF, 
+                    0x03, 
+                    0x00, 
+                    0x13
+                }, 
+```
+It does! Pins INT[A-D] according to this table are connected to GSIs 0x10-0x13, which according to the chipset datasheet are
+directly mapped to PIRQ[A-D]. So, INT[A-D] -> PIRQ[A-D] for device 28, which I stated above by reading chipset registers, is
+also what is indicated in the ACPI tables of this system. Hopefully now you have a bit of insight as to why these interrupts
+are routed as they are.
+
+You must also realise that this mapping is valid only for device 28, which is a root port, and not for the devices behind the
+root port. A root port also has reasons for generating interrupts, such as hotplug events. For devices attached to the root port,
+the ACPI tables provide a different routing:
+
+````
+                    Package (0x04)
+                    {
+                        0xFFFF, 
+                        0x00, 
+                        0x00, 
+                        0x11
+                    }, 
+
+                    Package (0x04)
+                    {
+                        0xFFFF, 
+                        0x01, 
+                        0x00, 
+                        0x12
+                    }, 
+
+                    Package (0x04)
+                    {
+                        0xFFFF, 
+                        0x02, 
+                        0x00, 
+                        0x13
+                    }, 
+
+                    Package (0x04)
+                    {
+                        0xFFFF, 
+                        0x03, 
+                        0x00, 
+                        0x10
+                    }
+````
+This is the routing for ```00:1c.1```, which as you may recall from the chipset datasheet and PCI dump above, is root port 2.
+Can you see some similarities with the swizzle I talked about earlier? It seems the pins INT[A-D] of the device behind this root port
+are mapped to pins INTB, INTC, INTD, INTA of the root port itself. It seems that the chipset designers decided to use this swizzle,
+albeit with the function number of the corresponding root port (1 in this case) instead of the device number behind it (which is always
+0 for PCI express).
+
+Although this is a neat explanation, it is important not to read too much into it and apply it to any system you find. The mapping
+of INTx signals for devices behind root ports is completely arbitrary and need not be mapped to the INTx signals of the root port
+itself. Especially for systems with two IOAPICs, it would greatly reduce how many of the pins you can actually use and needlessly
+increase interrupt sharing. On my Thinkpad T14 which contains two IOAPICs, for example, this mapping simply does not exist.
+
+Let us now try to decode the AML code we saw earlier that handles routing of PCI interrupts to the legacy 8259 PIC. 
+		    
