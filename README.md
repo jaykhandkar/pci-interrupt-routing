@@ -260,22 +260,23 @@ the best way, since ```/dev/mem``` only exposes the low 1 MiB of address space:
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/init.h>
-
-#include <linux/kernel.h>       /* printk() */
-#include <linux/slab.h>         /* kmalloc() */
-#include <linux/fs.h>           /* everything... */
-#include <linux/errno.h>        /* error codes */
-#include <linux/cdev.h>		/* char device registration*/
+#include <linux/kernel.h>       
+#include <linux/slab.h>        
+#include <linux/fs.h>         
+#include <linux/errno.h>       
+#include <linux/cdev.h>		
 #include <linux/types.h> 
-#include <linux/fcntl.h>        /* O_ACCMODE */
-#include <linux/mm_types.h>     /* struct page and struct mm_struct*/
-#include <asm/page.h>           /*pgd_t, pte_t, __va etc.*/
-#include <linux/pgtable.h>      /*pgd_offset, pud_offset etc*/
-#include <asm/pgtable_types.h>  /*PTE_PFN_MASK*/
+#include <linux/fcntl.h>       
+#include <linux/mm_types.h>     
+#include <asm/page.h>          
+#include <linux/pgtable.h>     
+#include <asm/pgtable_types.h> 
 #include <asm/types.h>
 #include <asm/smp.h>
 #include <linux/highmem.h>
 #include <asm/io.h>
+
+/* you definitely don't need so many includes, i've simply copy pasted them from another boilerplate module */
 
 int test_init(void)
 {
@@ -283,7 +284,7 @@ int test_init(void)
   void *phys_addr = 0xfed1c000;
   void *virt_addr = ioremap(phys_addr, 16 * (1 << 10));
   u32 test = readw(virt_addr + 0x3146);
-  printk("register D28UR: 0x%lx\n", test);
+  printk("register D28IR: 0x%lx\n", test);
   return 0;
 }
 
@@ -301,14 +302,14 @@ on this system, given that it does not support huge pages. I've also omitted any
 Loading this module gave the folowing output in the kernel ring buffer:
 
 ```
-[41079.916787] register D28UR: 0x3210
+[41079.916787] register D28IR: 0x3210
 ```
 This register has retained its default value of ```3210h```. This means that pins ```INT[A-H]#``` of device 28 are connected to ```PIRQ[A-D]#``` (refer
 to the description of the D28IR register above.).  Let's look at the ```_PRT``` table for the PCIe root complex of this system to see if
 it matches:
 
 ```
-                Package (0x04)
+Package (0x04)
 {
     0x001CFFFF, 
     0x00, 
@@ -339,10 +340,10 @@ Package (0x04)
     0x00, 
     0x13
 }, 
-
 ```
-It does! Pins INT[A-D] according to this table are connected to GSIs 0x10-0x13, which according to the chipset datasheet are
-directly mapped to PIRQ[A-D]. So, INT[A-D] -> PIRQ[A-D] for device 28, which I stated above by reading chipset registers, is
+
+It does! Pins ```INT[A-D]#``` according to this table are connected to GSIs 0x10-0x13, which according to the chipset datasheet are
+directly mapped to ```PIRQ[A-D]#```. So, ```INT[A-D]#``` -> ```PIRQ[A-D]#``` for device 28, which I stated above by reading chipset registers, is
 also what is indicated in the ACPI tables of this system. Hopefully now you have a bit of insight as to why these interrupts
 are routed as they are.
 
@@ -351,7 +352,7 @@ root port. A root port also has reasons for generating interrupts, such as hotpl
 the ACPI tables provide a different routing:
 
 ````
-                    Package (0x04)
+    Package (0x04)
     {
 	0xFFFF, 
 	0x00, 
@@ -384,7 +385,7 @@ the ACPI tables provide a different routing:
     }
 ````
 This is the routing for ```00:1c.1```, which as you may recall from the chipset datasheet and PCI dump above, is root port 2.
-Can you see some similarities with the swizzle I talked about earlier? It seems the pins INT[A-D] of the device behind this root port
+Can you see some similarities with the swizzle I talked about earlier? It seems the pins ```INT[A-D]#``` of the device behind this root port
 are mapped to pins INTB, INTC, INTD, INTA of the root port itself. It seems that the chipset designers decided to use this swizzle,
 albeit with the function number of the corresponding root port (1 in this case) instead of the device number behind it (which is always
 0 for PCI express). This explanation also checks out for the other root ports on this system.
@@ -404,10 +405,10 @@ It is fairly straightforward, the highest bit enables or disables the routing an
 the interrupt is mapped to. You will realise, then, how the following code, which I said disables the link works:
 
 ```
-            Method (_DIS, 0, NotSerialized)  // _DIS: Disable Device
-            {
-                \_SB.PCI0.LPC.PIRA |= 0x80
-            }
+Method (_DIS, 0, NotSerialized)  // _DIS: Disable Device
+{
+    \_SB.PCI0.LPC.PIRA |= 0x80
+}
 ```
 It is simply turning on the 'disable' bit of the relevant configuration register. The other methods, ```_STA, _CRS, _SRS```
 should also be clear, even though it is quite tedious to read ACPI Source Language code.
