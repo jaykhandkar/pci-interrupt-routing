@@ -251,4 +251,22 @@ Look at the format of this register, from section 13.1.39:
 Given that it is aligned on a 16 Kib boundary, the base address is then ```fed1c000h```. Okay, so we need to read at an offset of ```3146h```
 from this address, a word that will give us the value of the D28IR register. However, a simple setpci in this case will not suffice, since
 we are no longer dealing with PCI configuration space. We need a way to read from arbitrary physical memory, and writing a kernel module is
-the best way, since ```/dev/mem``` only exposes the low 1 MiB of address space.
+the best way, since ```/dev/mem``` only exposes the low 1 MiB of address space:
+
+```
+int test_init(void)
+{
+	
+  void *phys_addr = 0xfed1c000;
+  void *virt_addr = ioremap(phys_addr, 16 * (1 << 10));
+  u32 test = readw(virt_addr + 0x3146);
+  printk("register D28UR: 0x%lx\n", test);
+  return 0;
+}
+void test_exit(void)
+{
+  iounmap(0xfed1c000);
+}
+module_init(test_init);
+module_exit(test_exit);
+```
