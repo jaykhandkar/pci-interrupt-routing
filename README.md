@@ -246,7 +246,7 @@ fed1c001
 ```
 
 ```00:1f.0``` is the bus:device.function of the ISA bridge, as you can see in the lspci dump, and ```F0.L``` tells setpci to read a [L]ong
-from offset ```F0h``` in the configuration space of the device. Apparently, it has been set to ```fed1c001h``` by firmware on this system.
+from offset ```F0h``` in the configuration space of the device. Apparently, it has been set to ```FED1C001h``` by firmware on this system.
 Look at the format of this register, from section 13.1.39:
 
 ![t420-rcba](https://user-images.githubusercontent.com/23404671/179914734-24cc07df-a8dd-403a-9dee-c1bd7cd71a57.png)
