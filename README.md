@@ -224,9 +224,31 @@ hide root ports that are unused. Have a look at section 10.1.3 of the PCH datash
 ![c200-pch-rpcfg](https://user-images.githubusercontent.com/23404671/178262008-79c7f95b-1a57-4113-9339-f7df478f2378.png)
 
 Okay, now to the relevant part. If you go through sections 5.8 through 5.10 of the PCH datasheet, you will find that this chipset
-integrates both a legacy AT compatible 8259 PIC as well as a 24 pin IOxAPIC. The first 16 legacy interrupt sources such as the RTC,
-the PIT, the PS/2 controller etc. are mapped 1-1 to the first 16 pins of the IOAPIC, with the exception of the PIT, since the first
-pin of the IOAPIC is usually connected to the PIC as a cascade. For interrupts from PCIe devices, this PCH defines the ```PIRQ[A-H]#```
-signals which can be routed to certain pins of the 8259 PIC, or are connected directly to pins 17-24 of the IOAPIC. Since PCIe INTX
-interrupts are really just messages and not physical signals, the PCH can route these to the ```PIRQ[A-H]#``` signals as it pleases.
-In fact, look at sections 10.1.28 through 10.1.34 of the PCH datasheet:
+integrates both a legacy AT compatible 8259 PIC as well as a 24 pin IOxAPIC as part of its _interrupt interface_. The first 16 legacy 
+interrupt sources such as the RTC, the PIT, the PS/2 controller etc. are mapped 1-1 to the first 16 pins of the IOAPIC, with the exception 
+of the PIT, since the first pin of the IOAPIC is usually connected to the PIC as a cascade. For interrupts from PCIe devices, this PCH 
+defines the ```PIRQ[A-H]#```signals which can be routed to certain pins of the 8259 PIC, or are connected directly to pins 17-24 of the 
+IOAPIC. Since PCIe INTX interrupts are really just messages and not physical signals, the PCH can route these to the ```PIRQ[A-H]#``` 
+signals as it pleases. In fact, look at sections 10.1.28 through 10.1.34 of the PCH datasheet:
+
+![c200-dir](https://user-images.githubusercontent.com/23404671/179912066-e0f7d46f-8cfd-4b40-876c-b1dcf67a1fb9.png)
+
+The above register controls how the virtual INTx signals of device 28 are mapped to the chipsets PIRQ[A-H] signals. Recall from the lspci
+dump above that device 28 contains the root ports of the chipset. Let us try to actually read this register. You can see that this register
+is at an offset of ```3146h``` from the base of the chipset configuration registers block, whose base address according to the datasheet
+is in the RCBA (Root Complex Base Address) register of the PCI-LPC bridge. I'll read this register using the ```setpci``` utility, which
+enables you to read from the configuration space of PCI devices:
+```console
+root@t420:~# setpci -s 00:1f.0 F0.L
+fed1c001
+```
+```00:1f.0``` is the bus:device.function of the ISA bridge, as you can see in the lspci dump, and ```F0.L``` tells setpci to read a [L]ong
+from offset ```F0h``` in the configuration space of the device. Apparently, it has been set to ```fed1c001h``` by firmware on this system.
+Look at the format of this register, from section 13.1.39:
+
+![t420-rcba](https://user-images.githubusercontent.com/23404671/179914734-24cc07df-a8dd-403a-9dee-c1bd7cd71a57.png)
+
+Given that it is aligned on a 16 Kib boundary, the base address is then ```fed1c000h```. Okay, so we need to read at an offset of ```3146h```
+from this address, a word that will give us the value of the D28IR register. However, a simple setpci in this case will not suffice, since
+we are no longer dealing with PCI configuration space. We need a way to read from arbitrary physical memory, and writing a kernel module is
+the best way, since ```/dev/mem``` only exposes the low 1 MiB of address space.
