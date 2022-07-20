@@ -179,7 +179,7 @@ call ```_DIS``` and to get the status of the link, call ```_STA```. This is what
 it, and what all that code above means, keep reading.
 
 You will notice that all this information is bus relative, since every package contains only a device number. Every PCI bridge
-on the system will also have a a ```_PRT``` method to provide routing information for devices behind that bridge. In case it 
+on the system will also have a ```_PRT``` method to provide routing information for devices behind that bridge. In case it 
 doesn't, or the bridge doesn't exist at all in the ACPI namespace, it means that the interrupt pins for devices behind that
 bridge are mapped to interrupt pins on the bridge itself in a specific manner. This is the interrupt _swizzle_ defined in the
 [PCI-PCI bridge][3] specification - 
