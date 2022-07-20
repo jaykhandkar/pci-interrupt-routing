@@ -181,7 +181,7 @@ You will notice that all this information is bus relative, since every package c
 on the system will also have a a ```_PRT``` method to provide routing information for devices behind that bridge. In case it 
 doesn't, or the bridge doesn't exist at all in the ACPI namespace, it means that the interrupt pins for devices behind that
 bridge are mapped to interrupt pins on the bridge itself in a specific manner. This is the interrupt _swizzle_ defined in the
-PCI-PCI bridge specification - 
+[PCI-PCI bridge][3] specification - 
 
 ![swizzle](https://user-images.githubusercontent.com/23404671/178135531-f4a27edd-9651-4f19-a70d-4d3f5e296e8a.png)
 
@@ -191,7 +191,7 @@ routed to the systems interrupt controller. So if your goal is to get PCI interr
 good to go.
 
 I will now take the example of a specific chipset and show _why_ the routing information provided is what it is. I will use a Thinkpad
-T420 - it contains a Sandy Bridge Intel Core i5-240M with a Cougar Point Intel C200 PCH chipset. The datasheets for both of these are
+T420 - it contains a Sandy Bridge [Intel Core i5-240M][2] with a Cougar Point Intel C200 PCH chipset. The datasheets for both of these are
 publicly available, and so I can show you exactly how you can make sense of the interrupt routing information you will find on this 
 machine. First, there are some differences you should understand since this system contains a PCIe fabric and not PCI, although PCIe
 is compatible with PCI from a software perspective.
@@ -219,7 +219,7 @@ as just a logical extension of PCI bus 0. Look at the output of ```lspci``` on t
 Devices 0 and 2 on PCI bus 0 are part of the processor package, and devices 0x16 through 0x1f are part of the PCH. DMI is essentialy
 "extending" PCI bus 0, making these devices that are part of separate physical components appear on the same bus. This particular PCH
 has eight root ports, functions 0-8 of device 0x1c. Only four of them are visible here though, because this chipset provides a way to 
-hide root ports that are unused. Have a look at section 10.1.3 of the PCH datasheet:
+hide root ports that are unused. Have a look at section 10.1.3 of the [PCH datasheet][1]:
 
 ![c200-pch-rpcfg](https://user-images.githubusercontent.com/23404671/178262008-79c7f95b-1a57-4113-9339-f7df478f2378.png)
 
@@ -362,12 +362,31 @@ This is the routing for ```00:1c.1```, which as you may recall from the chipset 
 Can you see some similarities with the swizzle I talked about earlier? It seems the pins INT[A-D] of the device behind this root port
 are mapped to pins INTB, INTC, INTD, INTA of the root port itself. It seems that the chipset designers decided to use this swizzle,
 albeit with the function number of the corresponding root port (1 in this case) instead of the device number behind it (which is always
-0 for PCI express).
+0 for PCI express). This explanation also checks out for the other root ports on this system.
 
 Although this is a neat explanation, it is important not to read too much into it and apply it to any system you find. The mapping
 of INTx signals for devices behind root ports is completely arbitrary and need not be mapped to the INTx signals of the root port
 itself. Especially for systems with two IOAPICs, it would greatly reduce how many of the pins you can actually use and needlessly
 increase interrupt sharing. On my Thinkpad T14 which contains two IOAPICs, for example, this mapping simply does not exist.
 
-Let us now try to decode the AML code we saw earlier that handles routing of PCI interrupts to the legacy 8259 PIC. 
+Let us now try to decode the AML code we saw earlier that handles routing of PCI interrupts to the legacy 8259 PIC. Look at registers
+```PIRQ[n]_ROUT``` of the LPC bridge (section 13.1.16 of the chipset datasheet):
+
 		    
+![c200-pirqn-rout](https://user-images.githubusercontent.com/23404671/179924081-4d36fdd4-4ca6-4b2b-8638-318eba87de66.png)
+
+It is fairly straightforward, the highest bit enables or disables the routing and the lower four bits are which pin of the 8259
+the interrupt is mapped to. You will realise, then, how the following code, which I said disables the link works:
+
+```
+            Method (_DIS, 0, NotSerialized)  // _DIS: Disable Device
+            {
+                \_SB.PCI0.LPC.PIRA |= 0x80
+            }
+```
+It is simply turning on the 'disable' bit of the relevant configuration register. The other methods, ```_STA, _CRS, _SRS```
+should also be clear, even though it is quite tedious to read ACPI Source Language code.
+
+ [1]: <https://www.intel.com/content/dam/www/public/us/en/documents/datasheets/6-chipset-c200-chipset-datasheet.pdf> (Intel 6 series chipset)
+ [2]: <https://www.intel.com/content/dam/www/public/us/en/documents/datasheets/2nd-gen-core-family-mobile-vol-2-datasheet.pdf>
+ [3]: <https://cds.cern.ch/record/551427/files/cer-2308933.pdf>
